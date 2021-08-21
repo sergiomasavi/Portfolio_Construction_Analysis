@@ -1,4 +1,8 @@
 <h1>Table of Contents<span class="tocSkip"></span></h1>
+<div class="toc"><ul class="toc-item"></ul></div>
+
+
+<h1>Table of Contents<span class="tocSkip"></span></h1>
 <div class="toc"><ul class="toc-item"><li><span><a href="#Specialized-trainee" data-toc-modified-id="Specialized-trainee-1"><span class="toc-item-num">1&nbsp;&nbsp;</span>Specialized trainee</a></span></li><li><span><a href="#Courses" data-toc-modified-id="Courses-2"><span class="toc-item-num">2&nbsp;&nbsp;</span>Courses</a></span></li></ul></div>
 
 
@@ -9,7 +13,7 @@
 - Coursera
 
 -----------------------------------------------------------------------------------------------
-## Specialized trainee
+Specialized trainee
 
 Investment Management with Python and Machine Learning
 url: https://www.coursera.org/specializations/investment-management-python-machine-learning
@@ -26,7 +30,7 @@ emphasis on the hands-on implementation of those ideas in the Python programming
 through a series of dedicated lab sessions.
 
 -----------------------------------------------------------------------------------------------
-## Courses
+Courses
 
 - Course 1
     
