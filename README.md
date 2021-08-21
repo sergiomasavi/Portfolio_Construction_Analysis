@@ -76,7 +76,8 @@ Courses
     that you will be able to use to perform your own analysis and build your own implementations 
     and perhaps even use your newly acquired knowledge to improve on current methods.
 
-    - Course 3		
+
+- Course 3		
     Python and Machine Learning for Asset Management
 
     Description:
@@ -102,7 +103,7 @@ Courses
     management.
 
 
-    - Course 4
+- Course 4
 
     Python and Machine-Learning for Asset Management with Alternative Data Sets
 
