@@ -1,3 +1,10 @@
+- Autor: Sergio Masa Avís
+- Email: sergio.masavi@gmail.com
+- Data Scientist at AITrading Global Group
+- EDHEC Business School
+- Coursera
+
+-----------------------------------------------------------------------------------------------
 Specialized trainee
 
 Investment Management with Python and Machine Learning
@@ -13,18 +20,6 @@ underlying concepts, but also on practical applications and implementation. Inst
 explaining the science, we help you build on that foundation in a practical manner, with an 
 emphasis on the hands-on implementation of those ideas in the Python programming language 
 through a series of dedicated lab sessions.
-
-
-
-------------------------------------------------------------------------------------------------
-Autor: Sergio Masa Avís
-Email: sergio.masavi@gmail.com
-Github: https://www.coursera.org/specializations/investment-management-python-machine-learning
-Data Scientist at AITrading Global Group
-EDHEC Business School
-Coursera
-
-
 
 -----------------------------------------------------------------------------------------------
 Courses
