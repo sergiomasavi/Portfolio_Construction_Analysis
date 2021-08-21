@@ -78,6 +78,7 @@ Courses
 
 
 - Course 3		
+    
     Python and Machine Learning for Asset Management
 
     Description:
