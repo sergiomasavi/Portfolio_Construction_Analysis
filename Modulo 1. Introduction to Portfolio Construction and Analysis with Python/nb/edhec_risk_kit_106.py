@@ -1,3 +1,6 @@
+# <h1>Table of Contents<span class="tocSkip"></span></h1>
+# <div class="toc"><ul class="toc-item"></ul></div>
+
 import pandas as pd
 import numpy as np
 
@@ -79,7 +82,7 @@ def is_normal(r, level=0.01):
         statistic, p_value = scipy.stats.jarque_bera(r)
         return p_value > level
 
-    
+
 def semideviation(r):
     """
     Returns the semideviation aka negative semideviation of r

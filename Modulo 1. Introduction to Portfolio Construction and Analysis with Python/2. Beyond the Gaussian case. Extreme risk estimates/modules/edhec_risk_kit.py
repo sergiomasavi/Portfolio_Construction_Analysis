@@ -1,13 +1,3 @@
-# -*- coding: utf-8 -*-
-# <h1>Table of Contents<span class="tocSkip"></span></h1>
-# <div class="toc"><ul class="toc-item"></ul></div>
-
-# <h1>Table of Contents<span class="tocSkip"></span></h1>
-# <div class="toc"><ul class="toc-item"></ul></div>
-
-# <h1>Table of Contents<span class="tocSkip"></span></h1>
-# <div class="toc"><ul class="toc-item"></ul></div>
-
 # Librerías
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -18,7 +8,7 @@ from plotly.subplots import make_subplots
 import warnings
 import numpy as np
 import scipy.stats # skewness and kurtosis
-
+from scipy.stats import norm
 
 
 def get_ffme_returns(directory):
@@ -60,7 +50,6 @@ def get_hfi_returns(directory):
     hfi.index = hfi.index.to_period('M')
 
     return hfi
-
 
 def drawdown(stock_returns: pd.Series, capital_inicial:float):
     """
@@ -272,4 +261,127 @@ def is_normal(r, level=0.01):
         statistic, p_value = scipy.stats.jarque_bera(r)
         return p_value > level
     
-    return p_value > level
+def negative_semideviation(r):
+    """
+    Devuelve la semidesviación en la semidesviación negativa de r
+    
+    Args:
+    ------
+    r [{pd.Series or pd.DataFrame}] -- Serie(s) temporal de retornos.
+    
+    Returns:
+    ----------
+    semideviation {[float or pd.Series]} -- Semidesviación negativa de los retornos
+    """
+    is_negative = r < 0
+    ns = r[is_negative].std(ddof=0)
+    return ns
+
+def var_historic(r, level=5):
+    """
+    Devuelve el Valor en Riesgo utilizando el método de histórico en un nivel 
+    especificado, es decir, devuelve el número tal que el porcentaje de 
+    "nivel" de los rendimientos se sitúan por debajo de ese número, y 
+    el porcentaje (de nivel 100) está por encima.
+    
+    Args:
+    r [{pd.Series or pd.DataFrame}] -- Serie(s) temporal de retornos.
+    level [{float}] -- Nivel de riesgo
+    
+    Returns:
+    ----------
+    var {[float or pd.Series]} -- VaR calculado con el método de históricos.
+    """
+    
+    if isinstance(r, pd.DataFrame):
+        return r.aggregate(var_historic, level=level)
+    
+    elif isinstance(r, pd.Series):
+        VaR = -np.percentile(r, level)
+        return VaR
+    
+    else:
+        raise TypeError('El tipado de la serie temporal de rendimientos debe ser pandas.Series o pandas.DataFrame')
+     
+def cvar_historic(r, level=5):
+    """
+    Computes the Conditional VaR of Series or DataFrame
+    """
+    if isinstance(r, pd.Series):
+        is_beyond = r <= -var_historic(r, level=level)
+        return -r[is_beyond].mean()
+    elif isinstance(r, pd.DataFrame):
+        return r.aggregate(cvar_historic, level=level)
+    else:
+        raise TypeError("Expected r to be a Series or DataFrame")
+       
+def var_gaussian(r, level=5):
+    """
+    Returns the Parametric Gauusian VaR of a Series or DataFrame
+    """
+    # compute the Z score assuming it was Gaussian
+    z = norm.ppf(level/100)
+    z_score =  -(r.mean() + z*r.std(ddof=0))
+    return z_score
+
+def var_cornish_fisher(r, level=5):
+    """
+    Returns the Parametric Gauusian VaR of a Series or DataFrame
+    If "modified" is True, then the modified VaR is returned,
+    using the Cornish-Fisher modification
+    """
+    # compute the Z score assuming it was Gaussian
+    z = norm.ppf(level/100)
+    # modify the Z score based on observed skewness and kurtosis
+    s = skewness(r)
+    k = kurtosis(r)
+    z = (z +
+            (z**2 - 1)*s/6 +
+            (z**3 -3*z)*(k-3)/24 -
+            (2*z**3 - 5*z)*(s**2)/36
+        )
+    z_cf = -(r.mean() + z*r.std(ddof=0))
+
+    return z_cf
+
+def cvar_historic(r, level=5):
+    """
+    Computes the Conditional VaR of Series or DataFrame
+    """
+    if isinstance(r, pd.Series):
+        is_beyond = r <= -var_historic(r, level=level)
+        return -r[is_beyond].mean()
+    elif isinstance(r, pd.DataFrame):
+        return r.aggregate(cvar_historic, level=level)
+    else:
+        raise TypeError("Expected r to be a Series or DataFrame")
+    
+def cvar_gaussian(r, level=5):
+    """
+    Computes the Conditional VaR of Series or DataFrame
+    """     
+        
+    if isinstance(r, pd.Series):
+        is_beyond = r <= -var_gaussian(r, level=level)
+        return -r[is_beyond].mean()
+    
+    
+    elif isinstance(r, pd.DataFrame):
+        return r.aggregate(cvar_gaussian, level=level)
+    else:
+        raise TypeError("Expected r to be a Series or DataFrame")
+    
+def cvar_cornish_fisher(r, level=5):
+    """
+    Computes the Conditional VaR of Series or DataFrame
+    """     
+        
+    if isinstance(r, pd.Series):
+        is_beyond = r <= -var_cornish_fisher(r, level=level)
+        return -r[is_beyond].mean()
+    
+    
+    elif isinstance(r, pd.DataFrame):
+        return r.aggregate(cvar_cornish_fisher, level=level)
+    else:
+        raise TypeError("Expected r to be a Series or DataFrame")
