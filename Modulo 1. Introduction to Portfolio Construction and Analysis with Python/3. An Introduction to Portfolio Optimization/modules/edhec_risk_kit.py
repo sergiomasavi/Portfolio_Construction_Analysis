@@ -10,6 +10,33 @@ import numpy as np
 import scipy.stats # skewness and kurtosis
 from scipy.stats import norm
 
+def get_ind_returns(filename):
+    """
+    Load and format the Ken French 30 Industry Portfolios Value Weighted Monthly
+    Returns.
+    
+    Args:
+    -----
+    filename [{str}] -- Directorio del fichero csv.
+    
+    
+    Returns:
+    -----
+    df_ind [{pandas.DataFrame}] -- DataFrame cargado con el csv con el formato
+                                   adecuado.
+    """
+    df_ind = pd.read_csv(filename,
+                         header=0,
+                         index_col=0,
+                         parse_dates=True)/100
+    
+    # Convertir indice a formato fecha
+    df_ind.index = pd.to_datetime(df_ind.index, format='%Y%m').to_period('M')
+
+    # Formatear nombre de columnas
+    df_ind.columns = df_ind.columns.str.strip()
+    
+    return df_ind
 
 def get_ffme_returns(directory, filename=None):
     """
@@ -379,3 +406,135 @@ def cvar_cornish_fisher(r, level=5):
         return r.aggregate(cvar_cornish_fisher, level=level)
     else:
         raise TypeError("Expected r to be a Series or DataFrame")
+       
+def var_analysis(returns : pd.DataFrame, level):
+    """
+    
+    
+    
+    Args:
+    ------
+    returns [{pandas.DataFrame}] -- DataFrame de retornos de distintos activos
+    level [{float}] -- Nivel de VaR
+    
+    Returns:
+    ------
+    
+    """
+    df_result = pd.DataFrame(index=returns.columns)
+    
+    # Var Historic
+    var_historic_ = var_historic(returns, level=level)
+    df_var_historic = pd.DataFrame(var_historic_)
+    df_var_historic.columns= ['Historic']
+    df_result = df_result.join(df_var_historic)
+    
+    # VaR Gaussian
+    var_gaussian_ = var_gaussian(returns, level=level)
+    df_var_gaussian = pd.DataFrame(var_gaussian_)
+    df_var_gaussian.columns= ['Gaussian']
+    df_result = df_result.join(df_var_gaussian)
+    
+    # VaR Cornish-Fisher
+    var_cornish_fisher_ = var_cornish_fisher(returns, level=level)
+    df_var_cornish_fisher = pd.DataFrame(var_cornish_fisher_)
+    df_var_cornish_fisher.columns= ['Cornish-Fisher']
+    df_result = df_result.join(df_var_cornish_fisher)
+    
+    
+    # Visualización
+    layout = go.Layout(
+    autosize=False,
+    width=1150,
+    height=550,
+
+    xaxis= go.layout.XAxis(linecolor = 'black',
+                           linewidth = 1,
+                           mirror = True),
+
+    yaxis= go.layout.YAxis(linecolor = 'black',
+                           linewidth = 1,
+                           mirror = True),
+
+    margin=go.layout.Margin(l=50,
+                            r=50,
+                            b=100,
+                            t=100,
+                            pad = 4))
+    
+    fig = go.Figure(data=[
+        go.Bar(name='Historic',       x=df_result.index, y=df_result['Historic']),
+        go.Bar(name='Gaussian',       x=df_result.index, y=df_result['Gaussian']),
+        go.Bar(name='Cornish-Fisher', x=df_result.index, y=df_result['Cornish-Fisher'])
+    ],
+                   layout=layout)
+    
+    # Change the bar mode
+    fig.update_layout(barmode='group', title_text=f'Value at Risk at {level}%')
+    fig.show()
+    
+    return df_result
+
+def annualize_rets(r, periods_per_year):
+    """
+    Computar la anualización de un conjunto de rendimientos.
+    
+    Args:
+    -----
+    r [{}] -- 
+    periods_per_year [{}] --
+    
+    
+    Returns:
+    -----
+    
+    
+    """
+    compounded_growth = (1+r).prod()
+    n_periods = r.shape[0]
+    annualize_returns =  compounded_growth**(periods_per_year/n_periods) - 1
+    return annualize_returns
+
+def annualize_vol(r, periods_per_year):
+    """
+    Computar la volatilidad anualizada de un conjunto de rendimientos
+    
+    Args:
+    -----
+    r [{}] -- 
+    periods_per_year [{}] --
+    
+    
+    Returns:
+    -----
+    
+    """
+    annualize_volatility = r.std()*periods_per_year**0.5
+    return annualize_volatility
+
+def sharpe_ratio(r, risk_free_rate, periods_per_year):
+    """
+    Computar el sharpe ratio anualizado de un conjunto de rendimientos.
+    
+    Args:
+    -----
+    
+    r [{}] -- 
+    periods_per_year [{}] --
+    risk_free_rate [{float}] -- Tasa libre de riesgo.
+
+    
+    
+    
+    Returns:
+    -----
+    
+    """
+    
+    # Convertir la tasa libre de riesgo
+    rf_per_period = (1 + risk_free_rate)**(1/periods_per_year) - 1
+    excess_ret = r - rf_per_period
+    ann_ex_ret = annualize_rets(excess_ret, periods_per_year)
+    ann_vol = annualize_vol(r, periods_per_year)
+    
+    return ann_ex_ret/ann_vol

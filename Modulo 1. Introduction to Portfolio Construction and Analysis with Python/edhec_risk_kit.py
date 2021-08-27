@@ -10,6 +10,33 @@ import numpy as np
 import scipy.stats # skewness and kurtosis
 from scipy.stats import norm
 
+def get_ind_returns(filename):
+    """
+    Load and format the Ken French 30 Industry Portfolios Value Weighted Monthly
+    Returns.
+    
+    Args:
+    -----
+    filename [{str}] -- Directorio del fichero csv.
+    
+    
+    Returns:
+    -----
+    df_ind [{pandas.DataFrame}] -- DataFrame cargado con el csv con el formato
+                                   adecuado.
+    """
+    df_ind = pd.read_csv(filename,
+                         header=0,
+                         index_col=0,
+                         parse_dates=True)/100
+    
+    # Convertir indice a formato fecha
+    df_ind.index = pd.to_datetime(df_ind.index, format='%Y-%m').to_period('M')
+
+    # Formatear nombre de columnas
+    df_ind.columns = df_ind.columns.str.strip()
+    
+    return df_ind
 
 def get_ffme_returns(directory, filename=None):
     """
