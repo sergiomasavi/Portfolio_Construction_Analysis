@@ -538,3 +538,76 @@ def sharpe_ratio(r, risk_free_rate, periods_per_year):
     ann_vol = annualize_vol(r, periods_per_year)
     
     return ann_ex_ret/ann_vol
+
+def portfolio_return(weights, expected_returns):
+    """
+    Calcula el rendimiento de una cartera a partir de los rendimientos esperados
+    y las ponderaciones que la componen.
+    
+    
+    Args:
+    ------
+    weights [{numpy.matrix}] -- Matriz de pesos Nx1.
+    expected_returns [{numpy.matrix}] -- Matriz de rendimientos anualizados esperados Nx1.
+    
+    
+    Returns:
+    ------
+    portfolio_return [{float}] -- Rendimiento de la cartera ponderada.
+    """
+    
+    portfolio_ret = weights.T @ expected_returns
+    
+    return portfolio_ret
+     
+def portfolio_volatility(weights, covmat):
+    """
+    Calcula la volatilidad de una cartera a partir de una matriz de covarianza
+    y los pesos que la componen.
+    
+    Args:
+    ------
+    weights [{numpy.matrix}] -- Matriz de pesos Nx1.
+    covmat [{numpy.matrix}] -- Matriz de covarianza esperados NxN.
+    
+    
+    Returns:
+    ------
+    portfolio_vol [{float}] -- Volatilidad de la cartera ponderada.
+    
+    """
+    portfolio_vol = (weights.T @ covmat @ weights)**0.5
+    
+    return portfolio_vol
+
+def plot_ef2(n_points, expected_returns, covmat, title):
+    """
+    Visualización de la frontera eficiente basada en dos activos.
+    
+    
+    Args:
+    ------
+    n_points [{int}] -- Número de puntos de la frontera eficiente
+    expected_returns [{numpy.matrix}] -- Matriz de rendimientos anualizados esperados Nx1.
+    covmat [{numpy.matrix}] -- Matriz de covarianza esperados NxN.
+
+    Returns:
+    ------
+    df_ef [{pd.DataFrame}] -- DataFrame con puntos de la frontera eficiente obtenidos.
+    
+    """
+    
+    if expected_returns.shape[0] != 2:
+        raise ValueError('plot_ef2 solo puede trabajar con un máximo de dos activos')
+    
+    weights = [np.array([w, 1-w]) for w in np.linspace(0, 1, n_points)]
+    rets = [portfolio_return(w, expected_returns) for w in weights]
+    vols = [portfolio_volatility(w, covmat) for w in weights]
+    df_ef = pd.DataFrame({'Returns':rets, 'Volatility':vols})
+        
+    fig = go.Figure(data=go.Scatter(x=df_ef['Volatility'], y=df_ef['Returns'], mode='lines+markers'))
+    fig.update_layout(title=title)
+    
+    fig.show()
+    
+    return df_ef
