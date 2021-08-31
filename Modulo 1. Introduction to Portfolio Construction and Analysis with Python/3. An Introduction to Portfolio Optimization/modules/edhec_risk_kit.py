@@ -9,6 +9,7 @@ import warnings
 import numpy as np
 import scipy.stats # skewness and kurtosis
 from scipy.stats import norm
+from scipy.optimize import minimize
 
 def get_ind_returns(filename):
     """
@@ -601,6 +602,97 @@ def plot_ef2(n_points, expected_returns, covmat, title):
         raise ValueError('plot_ef2 solo puede trabajar con un máximo de dos activos')
     
     weights = [np.array([w, 1-w]) for w in np.linspace(0, 1, n_points)]
+    rets = [portfolio_return(w, expected_returns) for w in weights]
+    vols = [portfolio_volatility(w, covmat) for w in weights]
+    df_ef = pd.DataFrame({'Returns':rets, 'Volatility':vols})
+        
+    fig = go.Figure(data=go.Scatter(x=df_ef['Volatility'], y=df_ef['Returns'], mode='lines+markers'))
+    fig.update_layout(title=title)
+    
+    fig.show()
+    
+    return df_ef
+
+def optimal_weights(n_points, expected_returns, covmat):
+    """
+    Genera una lista de pesos que son utilizados en el optimizador que
+    minimiza la volatilidad.
+    
+    Args:
+    -----
+    
+    
+    Returns:
+    -----
+    
+    
+    """
+    target_rs = np.linspace(expected_returns.min(), expected_returns.max(), n_points)
+    weights = [minimize_volatility(target_return, expected_returns, covmat) for target_return in target_rs]
+    return weights
+
+def minimize_volatility(target_return, expected_returns, cov):
+    """
+    Calcula las ponderaciones óptimas que logran el rendimiento objetivo
+    dado un conjunto de rendimientos esperados y una matriz de covarianza.
+    
+    Args:
+    -----
+    target_return [{floate}] -- Rendimiento objetivo.
+    expected_returns [{numpy.matrix}] -- Matriz de rendimientos anualizados esperados Nx1.
+    cov [{numpy.matrix}] -- Matriz de covarianza esperados NxN.
+    
+    Returns:
+    optimal_weights [{scipy.optimize.optimize.OptimizeResult}] -- Resultado del optimizador
+    -----
+    """
+    # Parámetros
+    number_assets = expected_returns.shape[0] # Número de activos
+    init_guess = np.repeat(1/number_assets, number_assets) # Ponedración inicial (inicialización)
+    bounds = ((0.0, 1.0),) * number_assets # Secuencia de límites para cada ponderación.
+
+    # Construcción de las restricciones
+    weights_sum_to_1 = {
+        'type':'eq',
+        'fun': lambda weights: np.sum(weights) - 1 # Los pesos deben sumar 1
+    }
+    
+    return_is_target = {
+        'type': 'eq',
+        'args': (expected_returns, ),
+        'fun':  lambda weights, expected_returns: target_return - portfolio_return(weights, expected_returns) # ¿Se cumple la restricción?
+    }
+    
+    # Aplicar optimizador
+    optimal_weights = minimize(
+        fun = portfolio_volatility, # Objective function
+        x0 = init_guess,
+        args = (cov,),
+        method='SLSQP', # Optimizador cuadrático
+        options={'disp':False},
+        constraints=(return_is_target, weights_sum_to_1),
+        bounds=bounds
+    )
+    return optimal_weights.x
+
+def plot_ef(n_points, expected_returns, covmat, title):
+    """
+    Visualización de la frontera eficiente basada en N activos.
+    
+    
+    Args:
+    ------
+    n_points [{int}] -- Número de puntos de la frontera eficiente
+    expected_returns [{numpy.matrix}] -- Matriz de rendimientos anualizados esperados Nx1.
+    covmat [{numpy.matrix}] -- Matriz de covarianza esperados NxN.
+
+    Returns:
+    ------
+    df_ef [{pd.DataFrame}] -- DataFrame con puntos de la frontera eficiente obtenidos.
+    
+    """
+
+    weights = optimal_weights(n_points, expected_returns, covmat)
     rets = [portfolio_return(w, expected_returns) for w in weights]
     vols = [portfolio_volatility(w, covmat) for w in weights]
     df_ef = pd.DataFrame({'Returns':rets, 'Volatility':vols})
