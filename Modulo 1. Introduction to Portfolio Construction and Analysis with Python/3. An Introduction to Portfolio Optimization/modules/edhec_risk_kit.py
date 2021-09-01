@@ -675,7 +675,78 @@ def minimize_volatility(target_return, expected_returns, cov):
     )
     return optimal_weights.x
 
-def plot_ef(n_points, expected_returns, covmat, title):
+def msr(riskfree_rate, expected_returns, covmat):
+    """
+    Devuelve las ponderaciones de la cartera que da el máximo ratio de sharpe
+    dada la tasa libre de riesgo y los rendimientos esperados y la matriz de 
+    covarianza
+    
+    Args:
+    ------
+    riskfree_rate [{}] -- 
+    expected_returns [{}] -- 
+    covmat [{}] -- 
+    
+    
+    Returns:
+    -------
+    optimal_weights [{}] --
+    ret_msr [{}] -- Rendimiento de la cartera calculada.
+    vol_msr [{}] -- Volatilidad de la cartera calculada.
+    """
+    
+    # Número de activos
+    n_assets = expected_returns.shape[0]
+    
+    # Inicialización de los pesos
+    init_guess = np.repeat(1/n_assets, n_assets)
+    bounds = ((0.0, 1.0),) * n_assets # an N-tuple of 2-tuples!
+    
+    # Restricciones
+    weights_sum_to_1 = {'type': 'eq',
+                        'fun': lambda weights: np.sum(weights) - 1
+    }
+    
+    # Función de cálculo para maximizar el Sharpe Ratio 
+    def neg_sharpe(weights, riskfree_rate, expected_returns, covmat):
+        """
+        Devuelve el negativo del ratio de sharpe
+        de la cartera dada (para maximizar el valor del SR)
+        
+        Args:
+        ------
+        weights [{}] -- 
+        riskfree_rate [{}] -- 
+        er [{}] -- 
+        cov [{}] -- 
+
+
+
+        Returns:
+        -------
+        neg_sr [{}] -- Valor negativo del sharpe ratio
+        """
+        
+        ret = portfolio_return(weights, expected_returns)
+        vol = portfolio_volatility(weights, covmat)
+        neg_sr =  -(ret - riskfree_rate)/vol
+        return neg_sr
+
+    weights = minimize(neg_sharpe, 
+                       init_guess,
+                       args=(riskfree_rate, expected_returns, covmat), 
+                       method='SLSQP',
+                       options={'disp': False},
+                       constraints=(weights_sum_to_1,),
+                       bounds=bounds)
+    optimal_weights = weights.x
+    
+    ret_msr = portfolio_return(optimal_weights, expected_returns)
+    vol_msr = portfolio_volatility(optimal_weights, covmat)
+
+    return optimal_weights, ret_msr, vol_msr
+
+def plot_ef(n_points, expected_returns, covmat, title, show_cml=False, riskfree_rate=0):
     """
     Visualización de la frontera eficiente basada en N activos.
     
@@ -697,9 +768,47 @@ def plot_ef(n_points, expected_returns, covmat, title):
     vols = [portfolio_volatility(w, covmat) for w in weights]
     df_ef = pd.DataFrame({'Returns':rets, 'Volatility':vols})
         
-    fig = go.Figure(data=go.Scatter(x=df_ef['Volatility'], y=df_ef['Returns'], mode='lines+markers'))
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=df_ef['Volatility'], 
+            y=df_ef['Returns'], 
+            mode='lines+markers', 
+            name='Efficient Frontier')
+    )
+    
+    if show_cml:
+        # MSR
+        w_msr, r_msr, vol_msr = msr(riskfree_rate, expected_returns, covmat)
+        
+        # Cap Market Line
+        cml_x = [0, vol_msr]
+        cml_y = [riskfree_rate, r_msr]
+
+        fig.add_trace(
+            go.Scatter(
+            x=cml_x, 
+            y=cml_y, 
+            mode='lines+markers', 
+            name='Cap Market Line')
+        )
+        
     fig.update_layout(title=title)
-    
+    fig.update_xaxes(range=[0, df_ef['Volatility'].max()+0.01], title_text='Volatility')
+    fig.update_yaxes(title_text='Return')
+    fig.update_traces(hovertemplate="%{y:.5f}")
+
+    fig.update_yaxes(tickprefix="")
+
+    fig.update_xaxes(
+        showspikes=True, spikethickness=2, spikecolor="#999999", spikemode="across"
+    )
+
+    fig.update_layout(
+        hovermode="x unified",
+        hoverdistance=200,
+        spikedistance=200,
+        transition_duration=500,
+    )
     fig.show()
-    
-    return df_ef
+   
