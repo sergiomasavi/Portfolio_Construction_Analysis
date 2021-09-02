@@ -9,6 +9,17 @@ import warnings
 import numpy as np
 import scipy.stats # skewness and kurtosis
 from scipy.stats import norm
+from scipy.optimize import minimize
+
+def get_returns(filename):
+    """
+    """
+    data = pd.read_csv(filename,header = 0, index_col=0, parse_dates=True, na_values=-99.99)/100
+    data.index = pd.to_datetime(data.index, format="%Y%m")
+    data.index = data.index.to_period('M')
+    data.columns = data.columns.str.strip()
+
+    return data
 
 def get_ind_returns(filename):
     """
@@ -31,7 +42,7 @@ def get_ind_returns(filename):
                          parse_dates=True)/100
     
     # Convertir indice a formato fecha
-    df_ind.index = pd.to_datetime(df_ind.index, format='%Y-%m').to_period('M')
+    df_ind.index = pd.to_datetime(df_ind.index, format='%Y%m').to_period('M')
 
     # Formatear nombre de columnas
     df_ind.columns = df_ind.columns.str.strip()
@@ -406,3 +417,524 @@ def cvar_cornish_fisher(r, level=5):
         return r.aggregate(cvar_cornish_fisher, level=level)
     else:
         raise TypeError("Expected r to be a Series or DataFrame")
+       
+def var_analysis(returns : pd.DataFrame, level):
+    """
+    
+    
+    
+    Args:
+    ------
+    returns [{pandas.DataFrame}] -- DataFrame de retornos de distintos activos
+    level [{float}] -- Nivel de VaR
+    
+    Returns:
+    ------
+    
+    """
+    df_result = pd.DataFrame(index=returns.columns)
+    
+    # Var Historic
+    var_historic_ = var_historic(returns, level=level)
+    df_var_historic = pd.DataFrame(var_historic_)
+    df_var_historic.columns= ['Historic']
+    df_result = df_result.join(df_var_historic)
+    
+    # VaR Gaussian
+    var_gaussian_ = var_gaussian(returns, level=level)
+    df_var_gaussian = pd.DataFrame(var_gaussian_)
+    df_var_gaussian.columns= ['Gaussian']
+    df_result = df_result.join(df_var_gaussian)
+    
+    # VaR Cornish-Fisher
+    var_cornish_fisher_ = var_cornish_fisher(returns, level=level)
+    df_var_cornish_fisher = pd.DataFrame(var_cornish_fisher_)
+    df_var_cornish_fisher.columns= ['Cornish-Fisher']
+    df_result = df_result.join(df_var_cornish_fisher)
+    
+    
+    # Visualización
+    layout = go.Layout(
+    autosize=False,
+    width=1150,
+    height=550,
+
+    xaxis= go.layout.XAxis(linecolor = 'black',
+                           linewidth = 1,
+                           mirror = True),
+
+    yaxis= go.layout.YAxis(linecolor = 'black',
+                           linewidth = 1,
+                           mirror = True),
+
+    margin=go.layout.Margin(l=50,
+                            r=50,
+                            b=100,
+                            t=100,
+                            pad = 4))
+    
+    fig = go.Figure(data=[
+        go.Bar(name='Historic',       x=df_result.index, y=df_result['Historic']),
+        go.Bar(name='Gaussian',       x=df_result.index, y=df_result['Gaussian']),
+        go.Bar(name='Cornish-Fisher', x=df_result.index, y=df_result['Cornish-Fisher'])
+    ],
+                   layout=layout)
+    
+    # Change the bar mode
+    fig.update_layout(barmode='group', title_text=f'Value at Risk at {level}%')
+    fig.show()
+    
+    return df_result
+
+def annualize_rets(r, periods_per_year):
+    """
+    Computar la anualización de un conjunto de rendimientos.
+    
+    Args:
+    -----
+    r [{}] -- 
+    periods_per_year [{}] --
+    
+    
+    Returns:
+    -----
+    
+    
+    """
+    compounded_growth = (1+r).prod()
+    n_periods = r.shape[0]
+    annualize_returns =  compounded_growth**(periods_per_year/n_periods) - 1
+    return annualize_returns
+
+def annualize_vol(r, periods_per_year):
+    """
+    Computar la volatilidad anualizada de un conjunto de rendimientos
+    
+    Args:
+    -----
+    r [{}] -- 
+    periods_per_year [{}] --
+    
+    
+    Returns:
+    -----
+    
+    """
+    annualize_volatility = r.std()*periods_per_year**0.5
+    return annualize_volatility
+
+def sharpe_ratio(r, risk_free_rate, periods_per_year):
+    """
+    Computar el sharpe ratio anualizado de un conjunto de rendimientos.
+    
+    Args:
+    -----
+    
+    r [{}] -- 
+    periods_per_year [{}] --
+    risk_free_rate [{float}] -- Tasa libre de riesgo.
+
+    
+    
+    
+    Returns:
+    -----
+    
+    """
+    
+    # Convertir la tasa libre de riesgo
+    rf_per_period = (1 + risk_free_rate)**(1/periods_per_year) - 1
+    excess_ret = r - rf_per_period
+    ann_ex_ret = annualize_rets(excess_ret, periods_per_year)
+    ann_vol = annualize_vol(r, periods_per_year)
+    
+    return ann_ex_ret/ann_vol
+
+def portfolio_return(weights, expected_returns):
+    """
+    Calcula el rendimiento de una cartera a partir de los rendimientos esperados
+    y las ponderaciones que la componen.
+    
+    
+    Args:
+    ------
+    weights [{numpy.matrix}] -- Matriz de pesos Nx1.
+    expected_returns [{numpy.matrix}] -- Matriz de rendimientos anualizados esperados Nx1.
+    
+    
+    Returns:
+    ------
+    portfolio_return [{float}] -- Rendimiento de la cartera ponderada.
+    """
+    
+    portfolio_ret = weights.T @ expected_returns
+    
+    return portfolio_ret
+     
+def portfolio_volatility(weights, covmat):
+    """
+    Calcula la volatilidad de una cartera a partir de una matriz de covarianza
+    y los pesos que la componen.
+    
+    Args:
+    ------
+    weights [{numpy.matrix}] -- Matriz de pesos Nx1.
+    covmat [{numpy.matrix}] -- Matriz de covarianza esperados NxN.
+    
+    
+    Returns:
+    ------
+    portfolio_vol [{float}] -- Volatilidad de la cartera ponderada.
+    
+    """
+    portfolio_vol = (weights.T @ covmat @ weights)**0.5
+    
+    return portfolio_vol
+
+def plot_ef2(n_points, expected_returns, covmat, title):
+    """
+    Visualización de la frontera eficiente basada en dos activos.
+    
+    
+    Args:
+    ------
+    n_points [{int}] -- Número de puntos de la frontera eficiente
+    expected_returns [{numpy.matrix}] -- Matriz de rendimientos anualizados esperados Nx1.
+    covmat [{numpy.matrix}] -- Matriz de covarianza esperados NxN.
+
+    Returns:
+    ------
+    df_ef [{pd.DataFrame}] -- DataFrame con puntos de la frontera eficiente obtenidos.
+    
+    """
+    
+    if expected_returns.shape[0] != 2:
+        raise ValueError('plot_ef2 solo puede trabajar con un máximo de dos activos')
+    
+    weights = [np.array([w, 1-w]) for w in np.linspace(0, 1, n_points)]
+    rets = [portfolio_return(w, expected_returns) for w in weights]
+    vols = [portfolio_volatility(w, covmat) for w in weights]
+    df_ef = pd.DataFrame({'Returns':rets, 'Volatility':vols})
+        
+    fig = go.Figure(data=go.Scatter(x=df_ef['Volatility'], y=df_ef['Returns'], mode='lines+markers'))
+    fig.update_layout(title=title)
+    
+    fig.show()
+    
+    return df_ef
+
+def optimal_weights(n_points, expected_returns, covmat):
+    """
+    Genera una lista de pesos que son utilizados en el optimizador que
+    minimiza la volatilidad.
+    
+    Args:
+    -----
+    
+    
+    Returns:
+    -----
+    
+    
+    """
+    target_rs = np.linspace(expected_returns.min(), expected_returns.max(), n_points)
+    weights = [minimize_volatility(target_return, expected_returns, covmat) for target_return in target_rs]
+    return weights
+
+def minimize_volatility(target_return, expected_returns, cov):
+    """
+    Calcula las ponderaciones óptimas que logran el rendimiento objetivo
+    dado un conjunto de rendimientos esperados y una matriz de covarianza.
+    
+    Args:
+    -----
+    target_return [{floate}] -- Rendimiento objetivo.
+    expected_returns [{numpy.matrix}] -- Matriz de rendimientos anualizados esperados Nx1.
+    cov [{numpy.matrix}] -- Matriz de covarianza esperados NxN.
+    
+    Returns:
+    optimal_weights [{scipy.optimize.optimize.OptimizeResult}] -- Resultado del optimizador
+    -----
+    """
+    # Parámetros
+    number_assets = expected_returns.shape[0] # Número de activos
+    init_guess = np.repeat(1/number_assets, number_assets) # Ponedración inicial (inicialización)
+    bounds = ((0.0, 1.0),) * number_assets # Secuencia de límites para cada ponderación.
+
+    # Construcción de las restricciones
+    weights_sum_to_1 = {
+        'type':'eq',
+        'fun': lambda weights: np.sum(weights) - 1 # Los pesos deben sumar 1
+    }
+    
+    return_is_target = {
+        'type': 'eq',
+        'args': (expected_returns, ),
+        'fun':  lambda weights, expected_returns: target_return - portfolio_return(weights, expected_returns) # ¿Se cumple la restricción?
+    }
+    
+    # Aplicar optimizador
+    optimal_weights = minimize(
+        fun = portfolio_volatility, # Objective function
+        x0 = init_guess,
+        args = (cov,),
+        method='SLSQP', # Optimizador cuadrático
+        options={'disp':False},
+        constraints=(return_is_target, weights_sum_to_1),
+        bounds=bounds
+    )
+    return optimal_weights.x
+
+def msr(risk_free_rate, expected_returns, covmat):
+    """
+    Devuelve las ponderaciones de la cartera que da el máximo ratio de sharpe
+    dada la tasa libre de riesgo y los rendimientos esperados y la matriz de 
+    covarianza
+    
+    Args:
+    ------
+    risk_free_rate [{}] -- 
+    expected_returns [{}] -- 
+    covmat [{numpy.matrix}] -- Matriz de covarianza esperados NxN.
+    
+    Returns:
+    -------
+    optimal_weights [{}] -- Pesos asociados a la cartera sobre la frontera eficiente con máximo valor del sharpe ratio
+    """
+    
+    # Número de activos
+    n_assets = expected_returns.shape[0]
+    
+    # Inicialización de los pesos
+    init_guess = np.repeat(1/n_assets, n_assets)
+    bounds = ((0.0, 1.0),) * n_assets # an N-tuple of 2-tuples!
+    
+    # Restricciones
+    weights_sum_to_1 = {'type': 'eq',
+                        'fun': lambda weights: np.sum(weights) - 1
+    }
+    
+    # Función de cálculo para maximizar el Sharpe Ratio 
+    def neg_sharpe(weights, risk_free_rate, expected_returns, covmat):
+        """
+        Devuelve el negativo del ratio de sharpe
+        de la cartera dada (para maximizar el valor del SR)
+        
+        Args:
+        ------
+        weights [{}] -- 
+        risk_free_rate [{}] -- 
+        er [{}] -- 
+        cov [{}] -- 
+
+
+
+        Returns:
+        -------
+        neg_sr [{}] -- Valor negativo del sharpe ratio
+        """
+        
+        ret = portfolio_return(weights, expected_returns)
+        vol = portfolio_volatility(weights, covmat)
+        neg_sr =  -(ret - risk_free_rate)/vol
+        return neg_sr
+
+    weights = minimize(neg_sharpe, 
+                       init_guess,
+                       args=(risk_free_rate, expected_returns, covmat), 
+                       method='SLSQP',
+                       options={'disp': False},
+                       constraints=(weights_sum_to_1,),
+                       bounds=bounds)
+    optimal_weights = weights.x
+    
+    return optimal_weights
+    
+def plot_ef(n_points, expected_returns, covmat, title, show_cml=False, risk_free_rate=0, show_ew=False, show_gmv=False):
+    """
+    Visualización de la frontera eficiente basada en N activos.
+    
+    
+    Args:
+    ------
+    n_points [{int}] -- Número de puntos de la frontera eficiente
+    expected_returns [{numpy.matrix}] -- Matriz de rendimientos anualizados esperados Nx1.
+    covmat [{numpy.matrix}] -- Matriz de covarianza esperados NxN.
+
+    Returns:
+    ------
+    df_ef [{pd.DataFrame}] -- DataFrame con puntos de la frontera eficiente obtenidos.
+    
+    """
+
+    weights = optimal_weights(n_points, expected_returns, covmat)
+    rets = [portfolio_return(w, expected_returns) for w in weights]
+    vols = [portfolio_volatility(w, covmat) for w in weights]
+    df_ef = pd.DataFrame({'Returns':rets, 'Volatility':vols})
+        
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=df_ef['Volatility'], 
+            y=df_ef['Returns'], 
+            mode='lines+markers', 
+            name='Efficient Frontier',
+            line=dict(color='firebrick', width=1.25)
+            )
+            
+    )
+    
+    if show_cml:
+        # MSR
+        w_msr = msr(risk_free_rate, expected_returns, covmat)
+        ret_msr = portfolio_return(w_msr, expected_returns)
+        vol_msr = portfolio_volatility(w_msr, covmat)
+        
+        # Cap Market Line
+        cml_x = [0, vol_msr]
+        cml_y = [risk_free_rate, ret_msr]
+
+        fig.add_trace(
+            go.Scatter(
+                x=cml_x, 
+                y=cml_y, 
+                mode='lines', 
+                name='MSR',
+                line=dict(color='green', width=1.5, dash='dot')
+                )
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=[vol_msr], 
+                y=[ret_msr], 
+                mode='markers', 
+                name='MSR',
+                marker=dict(
+                    color='black',
+                    symbol='x',
+                    size=12
+                    )
+                )
+            )   
+     
+    if show_ew:
+        n_assets = expected_returns.shape[0]
+        weights_ew = np.repeat(1/n_assets, n_assets)
+        r_ew = portfolio_return(weights_ew, expected_returns)
+        v_ew = portfolio_volatility(weights_ew, covmat)
+         
+        fig.add_trace(
+            go.Scatter(
+                x=[v_ew], 
+                y=[r_ew],
+                mode='markers',
+                name='EW',
+                marker=dict(
+                    color='red',
+                    size=12,
+                    opacity=1,
+                    symbol='x'
+            ))
+        )
+         
+    if show_gmv:
+        # GMV
+        w_gmv = gmv(covmat)
+        r_gmv = portfolio_return(w_gmv, expected_returns)
+        v_gmv = portfolio_volatility(w_gmv, covmat)
+        
+        fig.add_trace(
+            go.Scatter(
+                x=[v_gmv], 
+                y=[r_gmv],
+                mode='markers',
+                name='GMV',
+                marker=dict(
+                    color='darkorchid',
+                    size=12,
+                    opacity=1,
+                    symbol='x'
+            ))
+        )
+         
+    fig.update_layout(title=title)
+    fig.update_xaxes(range=[0, df_ef['Volatility'].max()+0.01], title_text='Volatility')
+    fig.update_yaxes(title_text='Return')
+    fig.update_traces(hovertemplate="%{y:.5f}")
+
+    fig.update_yaxes(tickprefix="")
+
+    fig.update_xaxes(
+        showspikes=True, spikethickness=2, spikecolor="#999999", spikemode="across"
+    )
+
+    fig.update_layout(
+        hovermode="x unified",
+        hoverdistance=200,
+        spikedistance=200,
+        transition_duration=500,
+    )
+    fig.show()
+   
+def resume_ef(expected_returns, weights, ret, vol, rentabilidad_individual=False):
+    """
+    Muestra por pantalla un resumen del portfolio sobre la frontera eficiente
+    calculado
+    
+    Args:
+    ------
+    expected_returns {[pandas.Series]} -- Rendimiento anualizado esperado.
+    weights_msr {[numpy.array]} -- Pesos de la distribución del portfolio.
+    ret {[float]} -- Rentabilidad del portfolio.
+    vol {[vol]} -- Volatilidad del portfolio.
+    """
+    expected_returns = expected_returns.copy()
+    
+    l = expected_returns.index.to_list()
+    print(f'Assets: {l}')
+    print('\n')
+    
+    # Guardar pesos en diccionario
+    assets_weights = dict()
+    for i, an in enumerate(l):
+        assets_weights[an] = weights[i]
+
+    print('Optimal Weights:')
+    weights = pd.Series(assets_weights).sort_values(ascending=False)
+    for key, value in weights.iteritems():
+        percentage = round(value*100, 2)
+        if percentage != 0:
+            print('\t{} = {:.2f}%'.format(key, percentage))
+
+    print('\n')
+    print('Rentabilidad = {:.2f}%'.format(ret*100))
+    print('Volatilidad = {:.2f}%'.format(vol*100))
+
+    if rentabilidad_individual:
+        print('\n')
+        print('Rentabilidad individual:')
+        expected_returns.sort_values(ascending=False, inplace=True)
+        for k, v in expected_returns.iteritems():
+            print('\t{} = {:.2f}%'.format(k, v*100))
+            
+def gmv(covmat):
+    """
+    Calcula los pesos del portfolio de minima varianza gloval a partir de la matriz de covarianza
+    
+    Args:
+    -----
+    covmat [{numpy.matrix}] -- Matriz de covarianza esperados NxN.
+    
+    
+    Returns:
+    ------
+    optimal_weights [{}] ---
+    """
+    n_assets = covmat.shape[0]
+    
+    optimal_weights = msr(risk_free_rate=0, expected_returns=np.repeat(1, n_assets), covmat=covmat)
+
+    
+    return optimal_weights
+
